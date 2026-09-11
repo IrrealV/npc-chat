@@ -1,0 +1,51 @@
+# Local discovery indexes and graph state
+.atl/
+/.codegraph/
+
+# OS clutter
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Dependencies and generated build/test output
+node_modules/
+dist/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Secrets; example files must contain placeholders only
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json
+credentials.*.json
+.npmrc
+.netrc
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Narrow local agent state patterns; skills remain trackable
+/.pi/settings.json
+/.pi/settings.local.json
+/.pi/models.json
+/.pi/sessions/
+/.pi/logs/
+/.pi/cache/
+/.pi/state/
+/.pi/npm/
+/.pi/git/
+/.codex/config.toml
+/.codex/config.local.toml
+/.codex/sessions/
+/.codex/archived_sessions/
+/.codex/history.jsonl
+/.codex/log/
+/.codex/state*.sqlite*
