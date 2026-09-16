@@ -28,4 +28,6 @@ npm run --silent codex:smoke > .local/batch1/authenticated-smoke.jsonl
 
 It performed official managed ChatGPT device sign-in, one Spanish text turn, and separately labeled experimental Live checks in the **same process**. Authentication was ephemeral. Stdout went only to the sanitized JSONL report, so no terminal stdout was expected; the ceremony stayed on terminal stderr. Never merge or capture ceremony stderr, or share device codes. Separate `codex:login`, `codex:probe`, and `codex:live` scripts each start fresh and require their own sign-in.
 
+Project context is available in the [sanitized memory snapshot and restore guide](docs/memory/README.md).
+
 Sign-in does not prove model entitlement, included pricing, or Live compatibility. See [Batch 1 boundaries, evidence, and verification](docs/batch-1.md). Read [AGENTS.md](AGENTS.md) and [local skills](docs/skills.md) before another batch. No repository license has been selected.
