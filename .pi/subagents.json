@@ -1,0 +1,28 @@
+{
+  "default_effort": "medium",
+  "model_profiles": {
+    "gentle-ai-explore": { "effort": "low" },
+    "gentle-ai-verify": { "effort": "medium" },
+    "gentle-ai-worker": { "effort": "medium" },
+    "jd-fix-agent": { "effort": "medium" },
+    "jd-judge-a": { "effort": "medium" },
+    "jd-judge-b": { "effort": "medium" },
+    "review-readability": { "effort": "medium" },
+    "review-reliability": { "effort": "medium" },
+    "review-resilience": { "effort": "medium" },
+    "review-risk": { "effort": "medium" },
+    "sdd-apply": { "effort": "medium" },
+    "sdd-archive": { "effort": "low" },
+    "sdd-design": { "effort": "medium" },
+    "sdd-explore": { "effort": "low" },
+    "sdd-init": { "effort": "low" },
+    "sdd-onboard": { "effort": "medium" },
+    "sdd-proposal": { "effort": "medium" },
+    "sdd-research": { "effort": "low" },
+    "sdd-spec": { "effort": "medium" },
+    "sdd-status": { "effort": "low" },
+    "sdd-sync": { "effort": "medium" },
+    "sdd-tasks": { "effort": "medium" },
+    "sdd-verify": { "effort": "medium" }
+  }
+}
