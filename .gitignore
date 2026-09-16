@@ -1,3 +1,6 @@
+# Isolated Batch 1 state (including dedicated managed authentication)
+/.local/
+
 # Local discovery indexes and graph state
 .atl/
 /.codegraph/

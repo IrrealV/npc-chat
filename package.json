@@ -1,0 +1,24 @@
+{
+  "name": "npc-chat-codex-probe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.23.2 <23" },
+  "scripts": {
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "codex:protocol": "tsx scripts/codex-protocol.ts",
+    "codex:check-isolation": "tsx scripts/codex-isolation.ts",
+    "codex:login": "tsx scripts/codex-cli.ts login",
+    "codex:probe": "tsx scripts/codex-cli.ts probe",
+    "codex:live": "tsx scripts/codex-cli.ts live",
+    "codex:smoke": "tsx scripts/codex-cli.ts smoke"
+  },
+  "dependencies": { "@openai/codex": "0.154.0" },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}
