@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountSummary, assertIncludedUsage, assertLoginReadinessSchema, assertThread, CONFIG, selectModel, serverCommand, threadParams } from '../src/codex/policy.js';
+import { accountSummary, assertIncludedUsage, assertLoginReadinessSchema, assertLogoutResult, assertThread, CONFIG, PERSISTENT_CONFIG, persistentServerCommand, selectModel, serverCommand, threadParams } from '../src/codex/policy.js';
 
 const bucket = { normalModelSlug: null, primary: { usedPercent: 20 }, secondary: { usedPercent: 10 }, rateLimitReachedType: null, spendControlReached: false };
 const usage = () => ({ ordinaryUsageAllowed: true, rateLimits: { ...bucket }, rateLimitsByLimitId: null });
@@ -218,5 +218,28 @@ describe('subscription-only policy', () => {
       environments: [], selectedCapabilityRoots: [], dynamicTools: [], ephemeral: true,
       sandbox: 'read-only', serviceTier: 'default', allowProviderModelFallback: false,
     });
+  });
+});
+
+describe('persistent credential policy', () => {
+  it('changes only the credential store from ephemeral to file', () => {
+    expect(CONFIG.cli_auth_credentials_store).toBe('ephemeral');
+    expect(PERSISTENT_CONFIG.cli_auth_credentials_store).toBe('file');
+    expect(PERSISTENT_CONFIG).toEqual({ ...CONFIG, cli_auth_credentials_store: 'file' });
+    const ephemeral = serverCommand();
+    const persistent = persistentServerCommand();
+    expect(persistent).toContain('cli_auth_credentials_store="file"');
+    expect(persistent).not.toContain('cli_auth_credentials_store="ephemeral"');
+    expect(persistent.filter((value) => !value.includes('cli_auth_credentials_store')))
+      .toEqual(ephemeral.filter((value) => !value.includes('cli_auth_credentials_store')));
+  });
+
+  it('validates the logout response as an empty plain object and fails closed on anything else', () => {
+    expect(() => assertLogoutResult({})).not.toThrow();
+    for (const response of [null, undefined, 'logged_out', 1, true, [], { success: false }, { error: 'NONSECRET' }, new Date()]) {
+      let code = 'no_error';
+      try { assertLogoutResult(response); } catch (error) { code = (error as { code?: string }).code ?? ''; }
+      expect(code).toBe('logout_failed');
+    }
   });
 });

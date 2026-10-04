@@ -38,14 +38,20 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       process.stdout.write(frames.map((frame) => JSON.stringify(frame) + '\n').join(''));
       return;
     }
-    event('item/agentMessage/delta', { threadId: 'thread', turnId: 'turn', delta: 'Qué ' });
+    const chat = JSON.stringify([
+      { username: 'Luz', message: 'Eso salió perfecto 😅' },
+      { username: 'Mateo', message: 'La gravedad ganó otra vez.' },
+    ]);
+    const response = mode === 'chat-success' ? chat : mode === 'chat-malformed' ? chat.slice(0, -1) : 'Qué caída.';
+    const split = mode.startsWith('chat-') ? Math.floor(response.length / 2) : 4;
+    event('item/agentMessage/delta', { threadId: 'thread', turnId: 'turn', delta: response.slice(0, split) });
     if (mode === 'slow-start') {
       setTimeout(() => send({ id, result: { turn: { id: 'turn' } } }), 30);
       return;
     }
     send({ id, result: { turn: { id: 'turn' } } });
     if (!['wait', 'no-interrupt-completion'].includes(mode)) {
-      event('item/agentMessage/delta', { threadId: 'thread', turnId: 'turn', delta: 'caída.' });
+      event('item/agentMessage/delta', { threadId: 'thread', turnId: 'turn', delta: response.slice(split) });
       event('turn/completed', { threadId: 'thread', turn: { id: 'turn', status: mode === 'failed' ? 'failed' : 'completed', error: 'untrusted detail' } });
     }
     return;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sandboxArgs } from '../src/codex/isolation.js';
+import { persistentSandboxArgs, sandboxArgs } from '../src/codex/isolation.js';
 
 describe('outer sandbox policy', () => {
   it('starts from an empty filesystem and environment, not a host root bind', () => {
@@ -42,5 +42,50 @@ describe('outer sandbox policy', () => {
   it('shares networking only for explicitly requested official server operations', () => {
     expect(sandboxArgs('/selected/codex', ['app-server'], true)).toContain('--share-net');
     expect(sandboxArgs('/selected/codex', ['app-server'], false)).not.toContain('--share-net');
+  });
+});
+
+describe('persistent sandbox policy', () => {
+  it('locks with fixed flock argv inside the sandbox and binds only the dedicated profile', () => {
+    const args = persistentSandboxArgs('/pinned/codex', '/home/owner/.local/state/npc-chat/codex-home',
+      '/usr/bin/flock', '/home/owner/.local/state/npc-chat/codex.lock', ['app-server'], true);
+    expect(args.slice(-8)).toEqual(['--', '/bin/flock', '-n', '-E', '100', '/lock/owner.lock', '/bin/codex', 'app-server']);
+    expect(args).toContain('--die-with-parent');
+    expect(args).toContain('--new-session');
+    expect(args).toContain('--unshare-all');
+    expect(args).toContain('--cap-drop');
+    expect(args).toContain('--share-net');
+    expect(args.join(' ')).not.toContain('--bind / /');
+    expect(args.join(' ')).not.toContain('--ro-bind / /');
+    const binds = args.flatMap((value, index) => value === '--bind' ? [[args[index + 1], args[index + 2]]] : []);
+    const roBinds = args.flatMap((value, index) => value === '--ro-bind' ? [[args[index + 1], args[index + 2]]] : []);
+    expect(binds).toContainEqual(['/home/owner/.local/state/npc-chat/codex-home', '/home/probe/.codex']);
+    expect(binds).toContainEqual(['/home/owner/.local/state/npc-chat/codex.lock', '/lock/owner.lock']);
+    expect(roBinds).toContainEqual(['/usr/bin/flock', '/bin/flock']);
+    expect(roBinds).toContainEqual(['/pinned/codex', '/bin/codex']);
+    expect(args.join(' ')).toContain('--setenv CODEX_HOME /home/probe/.codex');
+    expect(args.join(' ')).toContain('--setenv HOME /home/probe');
+    const directories = args.flatMap((value, index) => value === '--dir' ? [args[index + 1]] : []);
+    for (const directory of ['/home/probe/config', '/home/probe/cache', '/home/probe/data', '/home/probe/state', '/home/probe/runtime', '/lock']) {
+      expect(directories).toContain(directory);
+    }
+    expect(roBinds.some(([source]) => source === '/tmp')).toBe(false);
+    expect(binds.some(([source]) => source === '/home/owner' || source === '/home/owner/.codex')).toBe(false);
+  });
+
+  it('preserves the baseline inner bubblewrap and runtime read-only binds', () => {
+    const args = persistentSandboxArgs('/pinned/codex', '/profile/codex-home', '/usr/bin/flock', '/profile/codex.lock', ['app-server']);
+    const roBinds = args.flatMap((value, index) => value === '--ro-bind' ? [[args[index + 1], args[index + 2]]] : []);
+    const ephemeral = sandboxArgs('/pinned/codex', ['app-server']);
+    const ephemeralBinds = ephemeral.flatMap((value, index) => value === '--ro-bind' ? [[ephemeral[index + 1], ephemeral[index + 2]]] : []);
+    for (const bind of ephemeralBinds) expect(roBinds).toContainEqual(bind);
+  });
+
+  it('keeps the ephemeral default sandbox unchanged and network private', () => {
+    const ephemeral = sandboxArgs('/pinned/codex', ['app-server']);
+    expect(ephemeral).not.toContain('--share-net');
+    expect(ephemeral.flatMap((value, index) => value === '--dir' ? [ephemeral[index + 1]] : [])).not.toContain('/lock');
+    const persistent = persistentSandboxArgs('/pinned/codex', '/profile/codex-home', '/usr/bin/flock', '/profile/codex.lock', ['app-server']);
+    expect(persistent).not.toContain('--share-net');
   });
 });

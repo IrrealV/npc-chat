@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { spawnIsolated, captureIsolated, LOCAL, VERSION } from './isolation.js';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawnPersistent, spawnIsolated, captureIsolated, FLOCK_CONFLICT_CODE, LOCAL, VERSION } from './isolation.js';
 import { BridgeError, Rpc, safeCause, type Notice } from './rpc.js';
-import { accountSummary, assertIncludedUsage, assertLoginReadinessSchema, assertThread, CONFIG, selectModel, serverCommand, threadParams } from './policy.js';
+import { accountSummary, assertIncludedUsage, assertLoginReadinessSchema, assertLogoutResult, assertThread, CONFIG, PERSISTENT_CONFIG, persistentServerCommand, selectModel, serverCommand, threadParams } from './policy.js';
+import { prepareProfile, resolveProfile, type ProfileOptions } from './profile.js';
 import { verifyProtocol } from './schema.js';
 
 export type Transport = Pick<Rpc, 'request' | 'subscribe' | 'close'>;
@@ -35,7 +37,7 @@ export class CodexBridge {
     if (!Number.isFinite(turnTimeoutMs) || turnTimeoutMs < 1 || turnTimeoutMs > 120_000) throw new BridgeError('invalid_timeout');
   }
 
-  static async start(): Promise<CodexBridge> {
+  private static async verifyRuntime(): Promise<void> {
     await verifyProtocol();
     try {
       const [completion, update] = await Promise.all(['AccountLoginCompletedNotification', 'AccountUpdatedNotification']
@@ -43,16 +45,58 @@ export class CodexBridge {
       assertLoginReadinessSchema(completion, update);
     } catch { throw new BridgeError('pinned_schema_missing_or_incompatible'); }
     if ((await captureIsolated(['--version'])).trim() !== `codex-cli ${VERSION}`) throw new BridgeError('version_mismatch');
-    const rpc = new Rpc(await spawnIsolated(serverCommand(), { network: true }));
+  }
+
+  static async startPersistent(options: ProfileOptions = {}): Promise<CodexBridge> {
+    await CodexBridge.verifyRuntime();
+    const profile = await prepareProfile(resolveProfile(options));
+    return CodexBridge.openPersistent(PERSISTENT_CONFIG,
+      () => spawnPersistent(profile, persistentServerCommand(), { network: true }));
+  }
+
+  static async openPersistent(expectedConfig: Record<string, string | number | boolean>,
+    spawnChild: () => Promise<ChildProcessWithoutNullStreams>): Promise<CodexBridge> {
+    return CodexBridge.connect(new Rpc(await spawnChild()), expectedConfig, true);
+  }
+
+  // The lock conflict can only be observed before the handshake completes; a
+  // later provider exit with the same status is never reported as contention.
+  private static async connect(rpc: Rpc, expectedConfig: Record<string, string | number | boolean>,
+    watchLockConflict: boolean): Promise<CodexBridge> {
+    let lockConflict = false;
+    const onClose = (code: number | null) => { if (code === FLOCK_CONFLICT_CODE) lockConflict = true; };
+    if (watchLockConflict) rpc.child.on('close', onClose);
     try {
       await rpc.start();
+      if (watchLockConflict) rpc.child.off('close', onClose);
       const { config } = await rpc.request('config/read', { includeLayers: false });
-      for (const [key, expected] of Object.entries(CONFIG)) {
+      for (const [key, expected] of Object.entries(expectedConfig)) {
         const actual = key.split('.').reduce((value: any, part) => value?.[part], config);
         if (actual !== expected) throw new BridgeError('effective_config_mismatch', key);
       }
       return new CodexBridge(rpc);
-    } catch (error) { await rpc.close(); throw error; }
+    } catch (error) {
+      // Keep observing the owned child through close settlement so a positively
+      // known pre-handshake conflict exit is never lost behind a transport
+      // error; the observer is disposed only after cleanup, on every path.
+      try {
+        await rpc.close();
+      } finally {
+        if (watchLockConflict) rpc.child.off('close', onClose);
+      }
+      if (watchLockConflict && lockConflict) throw new BridgeError('profile_busy');
+      throw error;
+    }
+  }
+
+  async logout(): Promise<void> {
+    // Omitting params serializes the request without a params member.
+    assertLogoutResult(await this.rpc.request('account/logout', undefined));
+  }
+
+  static async start(): Promise<CodexBridge> {
+    await CodexBridge.verifyRuntime();
+    return CodexBridge.connect(new Rpc(await spawnIsolated(serverCommand(), { network: true })), CONFIG, false);
   }
 
   async login(ceremony: (value: Ceremony) => void, timeoutMs = 180_000): Promise<ReturnType<typeof accountSummary>> {

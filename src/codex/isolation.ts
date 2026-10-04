@@ -21,6 +21,15 @@ export async function codexBinary(): Promise<string> {
   return realpath(resolve('node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex'));
 }
 
+// Fixed sandbox environment: ephemeral HOME/XDG locations plus the dedicated codex home.
+const SANDBOX_ENV: Record<string, string> = {
+  HOME: '/home/probe', CODEX_HOME: '/home/probe/.codex',
+  XDG_CONFIG_HOME: '/home/probe/config', XDG_CACHE_HOME: '/home/probe/cache',
+  XDG_DATA_HOME: '/home/probe/data', XDG_STATE_HOME: '/home/probe/state',
+  XDG_RUNTIME_DIR: '/home/probe/runtime', PATH: '/bin', LANG: 'C.UTF-8',
+  SSL_CERT_FILE: '/etc/ssl/certs/ca-certificates.crt',
+};
+
 export function sandboxArgs(binary: string, command: string[], network = false): string[] {
   const args = ['--die-with-parent', '--new-session', '--unshare-all', '--cap-drop', 'ALL'];
   if (network) args.push('--share-net');
@@ -38,15 +47,53 @@ export function sandboxArgs(binary: string, command: string[], network = false):
     '--dir', '/home/probe/state', '--dir', '/home/probe/runtime',
     '--dir', '/work', '--chdir', '/work');
   for (const library of BWRAP_RUNTIME) args.push('--ro-bind', library, library);
-  for (const [key, value] of Object.entries({
-    HOME: '/home/probe', CODEX_HOME: '/home/probe/.codex',
-    XDG_CONFIG_HOME: '/home/probe/config', XDG_CACHE_HOME: '/home/probe/cache',
-    XDG_DATA_HOME: '/home/probe/data', XDG_STATE_HOME: '/home/probe/state',
-    XDG_RUNTIME_DIR: '/home/probe/runtime', PATH: '/bin', LANG: 'C.UTF-8',
-    SSL_CERT_FILE: '/etc/ssl/certs/ca-certificates.crt',
-  })) args.push('--setenv', key, value);
+  for (const [key, value] of Object.entries(SANDBOX_ENV)) args.push('--setenv', key, value);
   args.push('--', '/bin/codex', ...command);
   return args;
+}
+
+export const FLOCK_BINARY = '/usr/bin/flock';
+export const FLOCK_CONFLICT_CODE = 100;
+
+export async function flockBinary(): Promise<string> {
+  if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('unsupported_platform');
+  return realpath(FLOCK_BINARY);
+}
+
+// Persistent variant: the whole dedicated Codex home is bound read-write while
+// every other HOME/XDG location, /tmp and the workspace stay ephemeral. Kernel
+// lock ownership lives inside the sandbox via fixed flock argv, no shell.
+export function persistentSandboxArgs(binary: string, home: string, flock: string, lock: string, command: string[], network = false): string[] {
+  const args = ['--die-with-parent', '--new-session', '--unshare-all', '--cap-drop', 'ALL'];
+  if (network) args.push('--share-net');
+  args.push('--clearenv', '--tmpfs', '/', '--proc', '/proc', '--dev', '/dev',
+    '--dir', '/bin', '--ro-bind', binary, '/bin/codex',
+    '--ro-bind', '/usr/bin/bwrap', '/bin/bwrap',
+    '--ro-bind', flock, '/bin/flock',
+    '--dir', '/etc', '--dir', '/etc/ssl',
+    '--ro-bind', '/etc/ssl/certs', '/etc/ssl/certs',
+    '--ro-bind', '/usr/share/ca-certificates', '/usr/share/ca-certificates',
+    '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf',
+    '--ro-bind', '/etc/hosts', '/etc/hosts',
+    '--tmpfs', '/tmp', '--tmpfs', '/home', '--dir', '/home/probe',
+    '--dir', '/home/probe/config', '--dir', '/home/probe/cache', '--dir', '/home/probe/data',
+    '--dir', '/home/probe/state', '--dir', '/home/probe/runtime',
+    '--bind', home, '/home/probe/.codex',
+    '--dir', '/lock', '--bind', lock, '/lock/owner.lock',
+    '--dir', '/work', '--chdir', '/work');
+  for (const library of BWRAP_RUNTIME) args.push('--ro-bind', library, library);
+  for (const [key, value] of Object.entries(SANDBOX_ENV)) args.push('--setenv', key, value);
+  args.push('--', '/bin/flock', '-n', '-E', String(FLOCK_CONFLICT_CODE), '/lock/owner.lock', '/bin/codex', ...command);
+  return args;
+}
+
+export async function spawnPersistent(profile: { home: string; lock: string }, command: string[], options: { network?: boolean } = {}): Promise<ChildProcessWithoutNullStreams> {
+  await mkdir(LOCAL, { recursive: true, mode: 0o700 });
+  const cwd = await mkdtemp(`${LOCAL}/run-`);
+  const args = persistentSandboxArgs(await codexBinary(), profile.home, await flockBinary(), profile.lock, command, options.network ?? false);
+  return spawn('/usr/bin/bwrap', args, {
+    cwd, env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, stdio: 'pipe',
+  });
 }
 
 export async function spawnIsolated(command: string[], options: {

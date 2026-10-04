@@ -7,6 +7,10 @@
   "scripts": {
     "test": "vitest",
     "typecheck": "tsc --noEmit",
+    "npc:chat": "tsx scripts/npc-chat-cli.ts",
+    "npc:session": "tsx scripts/npc-session-cli.ts",
+    "npc:serve": "tsx scripts/npc-serve-cli.ts",
+    "npc:logout": "tsx scripts/npc-logout-cli.ts",
     "codex:protocol": "tsx scripts/codex-protocol.ts",
     "codex:check-isolation": "tsx scripts/codex-isolation.ts",
     "codex:login": "tsx scripts/codex-cli.ts login",

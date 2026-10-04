@@ -25,6 +25,6 @@ export async function verifyProtocol(): Promise<void> {
     const rates = await schema('GetAccountRateLimitsResponse');
     if (!rates.properties.ordinaryUsageAllowed || !rates.properties.rateLimitsByLimitId) throw new Error();
     const authMode = await readFile(`${LOCAL}/schema-${VERSION}-ts/v2/CliAuthCredentialsStoreMode.ts`, 'utf8');
-    if (!authMode.includes('"ephemeral"')) throw new Error();
+    for (const mode of ['"ephemeral"', '"file"']) if (!authMode.includes(mode)) throw new Error();
   } catch { throw new BridgeError('pinned_schema_missing_or_incompatible'); }
 }

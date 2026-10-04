@@ -20,6 +20,22 @@ export function serverCommand(): string[] {
   return [...Object.entries(CONFIG).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]), 'app-server'];
 }
 
+export const PERSISTENT_CONFIG: Record<string, string | number | boolean> = { ...CONFIG, cli_auth_credentials_store: 'file' };
+
+export function persistentServerCommand(): string[] {
+  return [...Object.entries(PERSISTENT_CONFIG).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]), 'app-server'];
+}
+
+// The pinned account/logout result is an empty JSON object. A null result,
+// arrays, scalars and any payload object fail closed as an unconfirmed logout.
+export function assertLogoutResult(response: unknown): void {
+  const prototype = response !== null && typeof response === 'object' ? Object.getPrototypeOf(response) : undefined;
+  const emptyObject = response !== null && typeof response === 'object' && !Array.isArray(response)
+    && (prototype === Object.prototype || prototype === null)
+    && Object.keys(response).length === 0;
+  if (!emptyObject) throw new BridgeError('logout_failed');
+}
+
 export function assertLoginReadinessSchema(completion: any, update: any): void {
   const invalid = () => { throw new BridgeError('pinned_schema_missing_or_incompatible'); };
   const idType = completion?.properties?.loginId?.type;
